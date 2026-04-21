@@ -1,0 +1,38 @@
+[project]
+name = "mcp-db-transactions"
+version = "0.1.0"
+description = "Policy-aware RAG agent that queries the payment-transaction DB via LangGraph."
+requires-python = ">=3.11"
+dependencies = [
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-text-splitters>=0.3.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-google-genai>=2.0.0",
+    "langchain-openai>=0.2.0",
+    "langchain-chroma>=0.1.4",
+    "langgraph>=0.2.50",
+    "langgraph-checkpoint>=2.0.0",
+    "chromadb>=0.5.0",
+    "pypdf>=5.0.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg[binary]>=3.2.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "python-dotenv>=1.0.0",
+    "tenacity>=9.0.0",
+    "gradio>=4.44.0",
+    "streamlit>=1.40.0",
+]
+
+[project.optional-dependencies]
+postgres-checkpoint = ["langgraph-checkpoint-postgres>=2.0.0"]
+dev = ["ruff>=0.7.0", "pytest>=8.0.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

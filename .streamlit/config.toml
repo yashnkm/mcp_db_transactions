@@ -1,0 +1,34 @@
+[theme]
+base = "light"
+primaryColor = "#4f46e5"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f6f7fb"
+textColor = "#0f172a"
+linkColor = "#4f46e5"
+borderColor = "#e2e8f0"
+
+# Palette — used by badges, colored text, sparklines
+redColor = "#dc2626"
+orangeColor = "#d97706"
+yellowColor = "#ca8a04"
+greenColor = "#059669"
+blueColor = "#4f46e5"
+violetColor = "#7c3aed"
+grayColor = "#64748b"
+
+# Dataframe
+dataframeBorderColor = "#e2e8f0"
+dataframeHeaderBackgroundColor = "#f6f7fb"
+
+# Chart categorical palette
+chartCategoricalColors = ["#4f46e5", "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#64748b"]
+
+# Font
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+
+[server]
+headless = true
+runOnSave = true
+
+[browser]
+gatherUsageStats = false

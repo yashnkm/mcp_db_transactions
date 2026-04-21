@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "skills": {
+    "developing-with-streamlit": {
+      "source": "streamlit/agent-skills",
+      "sourceType": "github",
+      "computedHash": "d366960761de1ec907dee42ddbdc08b9c868584cebc8c9fe8e0efdccb4bc5db7"
+    },
+    "gradio": {
+      "source": "gradio-app/gradio",
+      "sourceType": "github",
+      "computedHash": "ec0f33d4d054e112a19ff6a978fd3c53ce9432b27ce5c3a8ccbd2ab7cc765605"
+    },
+    "huggingface-gradio": {
+      "source": "huggingface/skills",
+      "sourceType": "github",
+      "computedHash": "267dadfa06166207300e6995c0f38ece48d56cfe0067865563955f36a252ed88"
+    },
+    "langchain-fundamentals": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "computedHash": "ede1b3210a135e2c7eb5ddb51e0aaf3b78fde07cfd9fbe6efaeb4d6c5db60bd2"
+    },
+    "langchain-rag": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "computedHash": "545c661f6ed9b54cfe078a438052b2742d6122fc022f69db67d1a01aca4c726c"
+    },
+    "langgraph-fundamentals": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "computedHash": "d754005c69632037ca79c4daa8177b03e5a0f17f40cde3b0f532b33a8df88ded"
+    },
+    "langgraph-persistence": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "computedHash": "fc617bfab9d06826cba1097def5c7775f4522a1dabdd1a0111472f9929b1b914"
+    }
+  }
+}
