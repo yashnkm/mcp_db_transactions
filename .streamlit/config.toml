@@ -1,29 +1,25 @@
 [theme]
-base = "light"
-primaryColor = "#4f46e5"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f6f7fb"
-textColor = "#0f172a"
-linkColor = "#4f46e5"
-borderColor = "#e2e8f0"
+base = "dark"
+primaryColor = "#818cf8"
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#0b0b0f"
+textColor = "#e5e7eb"
+linkColor = "#a5b4fc"
+borderColor = "#1f2937"
 
-# Palette — used by badges, colored text, sparklines
-redColor = "#dc2626"
-orangeColor = "#d97706"
-yellowColor = "#ca8a04"
-greenColor = "#059669"
-blueColor = "#4f46e5"
-violetColor = "#7c3aed"
-grayColor = "#64748b"
+redColor = "#f87171"
+orangeColor = "#fb923c"
+yellowColor = "#facc15"
+greenColor = "#34d399"
+blueColor = "#818cf8"
+violetColor = "#a78bfa"
+grayColor = "#9ca3af"
 
-# Dataframe
-dataframeBorderColor = "#e2e8f0"
-dataframeHeaderBackgroundColor = "#f6f7fb"
+dataframeBorderColor = "#1f2937"
+dataframeHeaderBackgroundColor = "#0b0b0f"
 
-# Chart categorical palette
-chartCategoricalColors = ["#4f46e5", "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#64748b"]
+chartCategoricalColors = ["#818cf8", "#34d399", "#fb923c", "#f87171", "#a78bfa", "#22d3ee", "#9ca3af"]
 
-# Font
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 
 [server]

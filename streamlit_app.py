@@ -5,6 +5,11 @@ Run:
 """
 from __future__ import annotations
 
+# Silence transformers' lazy-module deprecation spam BEFORE any import.
+import warnings
+warnings.filterwarnings("ignore", message="Accessing `__path__`.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="transformers.*")
+
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +23,9 @@ from langchain_core.messages import HumanMessage
 
 from agent.config import settings
 from agent.graph import build_graph
+from agent.logger import get_logger
+
+_ui_log = get_logger("ui")
 from agent.ingest import (
     add_files,
     list_policy_files,
@@ -131,14 +139,10 @@ def reset_thread():
 
 with st.sidebar:
     st.markdown("### :material/analytics: Transaction Analysis")
-    st.caption("Policy-aware RAG over the payment-transaction DB")
 
     with st.container(border=True):
         st.markdown("**:material/smart_toy: Model**")
         st.code(f"{settings.llm_provider}:{settings.llm_model}", language=None)
-        st.caption(
-            f":material/token: Embeddings — `{settings.embeddings_provider}:{settings.embeddings_model}`"
-        )
 
     with st.container(border=True):
         st.markdown("**:material/forum: Session**")
@@ -146,7 +150,7 @@ with st.sidebar:
         if st.button(
             "New thread",
             icon=":material/refresh:",
-            use_container_width=True,
+            width="stretch",
             type="secondary",
         ):
             reset_thread()
@@ -154,7 +158,6 @@ with st.sidebar:
 
     with st.container(border=True):
         st.markdown("**:material/database: Schema**")
-        st.caption(f"`{settings.db_schema}` · 4 tables")
         for t in TABLES:
             n = cached_row_count(t)
             if n is None:
@@ -162,36 +165,12 @@ with st.sidebar:
             else:
                 st.markdown(f"- `{t}` :blue-badge[{n:,}]")
 
-    st.caption(":material/bolt: Hot-reload on save — edit `streamlit_app.py` and the page refreshes.")
-
 
 # =============================================================================
 # Header + KPI row
 # =============================================================================
 
 st.title("Transaction analysis", anchor=False)
-st.caption(
-    "Retrieval-augmented agent over `authstattab`, `tranlogtab`, `int_detail_tab`, `int_control_tab`."
-)
-
-vstats = cached_vstore_stats()
-counts = {t: cached_row_count(t) for t in TABLES}
-
-kpi = st.columns(5)
-with kpi[0]:
-    st.metric("authstattab", f"{counts['authstattab'] or 0:,}", border=True)
-with kpi[1]:
-    st.metric("tranlogtab", f"{counts['tranlogtab'] or 0:,}", border=True)
-with kpi[2]:
-    st.metric("int_detail_tab", f"{counts['int_detail_tab'] or 0:,}", border=True)
-with kpi[3]:
-    st.metric("int_control_tab", f"{counts['int_control_tab'] or 0:,}", border=True)
-with kpi[4]:
-    st.metric(
-        "Policy chunks",
-        f"{vstats.get('chunks', 0):,}" if vstats.get("ok") else "error",
-        border=True,
-    )
 
 
 # =============================================================================
@@ -201,6 +180,10 @@ with kpi[4]:
 
 def run_pipeline(prompt: str):
     """Invoke the graph once and stash outputs in session_state."""
+    _ui_log.info(
+        "━━━━ TURN START thread=%s prompt=%r",
+        st.session_state.thread_id, prompt[:140],
+    )
     try:
         result = get_graph().invoke(
             {"query": prompt, "messages": [HumanMessage(content=prompt)]},
@@ -210,7 +193,13 @@ def run_pipeline(prompt: str):
         st.session_state.last_sources = result.get("policy_context", []) or []
         st.session_state.last_intent = result.get("intent")
         st.session_state.last_tool = result.get("db_tool_used") or ""
+        _ui_log.info(
+            "━━━━ TURN END thread=%s answer_chars=%d tool=%s",
+            st.session_state.thread_id, len(answer),
+            st.session_state.last_tool or "-",
+        )
     except Exception as e:
+        _ui_log.exception("pipeline failed: %s", e)
         answer = f":red-badge[Error] `{type(e).__name__}: {e}`"
         st.session_state.last_sources = []
         st.session_state.last_intent = None
@@ -240,22 +229,7 @@ with tab_chat:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Suggestion pills (only before first message)
-        if not st.session_state.messages and st.session_state.pending_prompt is None:
-            pick = st.pills(
-                "Try one",
-                list(EXAMPLE_QUERIES.keys()),
-                label_visibility="collapsed",
-                key="example_pills",
-            )
-            if pick:
-                st.session_state.pending_prompt = EXAMPLE_QUERIES[pick]
-                st.rerun()
-
-        # Resolve prompt from chat input OR pending pill
-        typed_prompt = st.chat_input(
-            "Ask about auth status, recaps, PB-secured checks, a specific acct/date…"
-        )
+        typed_prompt = st.chat_input("Ask a question")
         prompt = st.session_state.pending_prompt or typed_prompt
         st.session_state.pending_prompt = None
 
@@ -272,11 +246,10 @@ with tab_chat:
 
     with trace_col:
         st.markdown("**:material/timeline: Pipeline trace**")
-        st.caption("Retrieval → intent → DB tool, updated each turn.")
 
         with st.expander(":material/article: Retrieved policy snippets", expanded=True):
             if not st.session_state.last_sources:
-                st.caption("_Send a message to see sources._")
+                st.empty()
             else:
                 for i, d in enumerate(st.session_state.last_sources, 1):
                     src = d.metadata.get("source") or d.metadata.get("file_path") or "unknown"
@@ -289,7 +262,7 @@ with tab_chat:
         with st.expander(":material/psychology: Parsed intent", expanded=False):
             intent = st.session_state.last_intent
             if intent is None:
-                st.caption("_Send a message to see the intent._")
+                st.empty()
             else:
                 st.markdown(f"- **action** · `{intent.action}`")
                 st.markdown(f"- **target_table** · `{intent.target_table}`")
@@ -308,7 +281,7 @@ with tab_chat:
 
         with st.expander(":material/database: DB tool used", expanded=False):
             if not st.session_state.last_tool:
-                st.caption("_No DB tool called._")
+                st.empty()
             else:
                 st.markdown(f":green-badge[{st.session_state.last_tool}]")
 
@@ -341,11 +314,8 @@ with tab_policies:
 
     with upload_col:
         st.subheader("Ingest new documents", anchor=False)
-        st.caption(
-            "Uploaded files are copied to `./policies/` and their chunks added to the Chroma store."
-        )
         uploads = st.file_uploader(
-            "Drop PDFs / Markdown / plain text",
+            "Upload",
             type=["pdf", "md", "txt"],
             accept_multiple_files=True,
             label_visibility="collapsed",
@@ -356,7 +326,7 @@ with tab_policies:
                 "Ingest uploaded files",
                 icon=":material/upload:",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 disabled=not uploads,
             ):
                 settings.policies_dir.mkdir(parents=True, exist_ok=True)
@@ -388,7 +358,7 @@ with tab_policies:
                 "Rebuild from ./policies/",
                 icon=":material/refresh:",
                 type="secondary",
-                use_container_width=True,
+                width="stretch",
             ):
                 try:
                     with st.spinner("Rebuilding vector store…"):
@@ -407,7 +377,7 @@ with tab_policies:
     with files_col:
         st.subheader("In `./policies/`", anchor=False)
         if not files:
-            st.caption("No files yet. Upload some on the left.")
+            st.empty()
         else:
             df_files = pd.DataFrame(files).rename(
                 columns={"name": "file", "size_kb": "size (KB)"}
@@ -415,7 +385,7 @@ with tab_policies:
             st.dataframe(
                 df_files,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 column_config={
                     "file": st.column_config.TextColumn(width="large"),
                     "size (KB)": st.column_config.NumberColumn(format="%.1f", width="small"),
@@ -428,10 +398,6 @@ with tab_policies:
 # ------------------------------------------------------------------------
 
 with tab_db:
-    st.caption(
-        "Schema + 5 sample rows per table. Seed with `python scripts/seed_db.py --truncate` if empty."
-    )
-
     for t in TABLES:
         n = cached_row_count(t)
         header_label = f"**{t}** — " + (
@@ -451,8 +417,7 @@ with tab_db:
 
             headers, data = cached_sample(t)
             if not data:
-                st.caption("_No rows yet._")
                 continue
 
             df = pd.DataFrame(data, columns=headers)
-            st.dataframe(df, hide_index=True, use_container_width=True, height=220)
+            st.dataframe(df, hide_index=True, width="stretch", height=220)

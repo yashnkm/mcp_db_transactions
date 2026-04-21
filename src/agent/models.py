@@ -46,6 +46,14 @@ def build_classifier_model() -> BaseChatModel:
     )
 
 
+def build_executor_model() -> BaseChatModel:
+    return build_chat_model(
+        provider=settings.executor_provider or settings.llm_provider,
+        model=settings.executor_model or settings.llm_model,
+        temperature=0.0,
+    )
+
+
 def build_embeddings(
     provider: str | None = None,
     model: str | None = None,
@@ -53,6 +61,14 @@ def build_embeddings(
     provider = (provider or settings.embeddings_provider).lower()
     model = model or settings.embeddings_model
 
+    if provider in {"huggingface", "hf", "local"}:
+        from langchain_huggingface import HuggingFaceEmbeddings
+
+        return HuggingFaceEmbeddings(
+            model_name=model,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
     if provider in {"google_genai", "google", "gemini"}:
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
 

@@ -56,6 +56,17 @@ MERCHANTS = [
     ("WHOLE FOODS", "AUSTIN", "US-TX"),
 ]
 
+_REGION_BY_PREFIX = {
+    "US": "AMER", "CA": "AMER", "MX": "AMER", "BR": "AMER",
+    "GB": "EMEA", "IE": "EMEA", "DE": "EMEA", "FR": "EMEA", "AE": "EMEA",
+    "IN": "APAC", "CN": "APAC", "JP": "APAC", "SG": "APAC", "AU": "APAC",
+}
+
+
+def _region_for_geo(geo: str) -> str:
+    prefix = (geo or "").split("-", 1)[0][:2].upper()
+    return _REGION_BY_PREFIX.get(prefix, random.choice(["APAC", "EMEA", "AMER"]))
+
 MERCHANT_ADDRS = ["123 MAIN ST", "500 MARKET ST", "77 BROADWAY", "1 INFINITE LOOP", "42 QUAY ST"]
 
 RECAP_STATUS = ["PROCESSED", "PROCESSED", "PROCESSED", "PENDING", "REJECTED"]
@@ -128,6 +139,7 @@ def gen_authstattab(n: int) -> list[dict]:
                 "mrch_str_adr": random.choice(MERCHANT_ADDRS),
                 "mrch_cty_nm": merch[1],
                 "merchant_geo_cde": merch[2],
+                "region": _region_for_geo(merch[2]),
                 "auth_type_code": random.choices(["2", None, "1"], weights=[0.2, 0.7, 0.1])[0],
                 "nrid": rand_nrid(),
                 "mti": random.choice(MTI_VALUES),

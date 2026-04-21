@@ -40,6 +40,7 @@ CREATE TABLE authstattab (
     mrch_str_adr        VARCHAR(100),       -- Merchant address
     mrch_cty_nm         VARCHAR(50),        -- Merchant city name
     merchant_geo_cde    VARCHAR(10),        -- Merchant geo code
+    region              VARCHAR(8),         -- Regional bucket: APAC | EMEA | AMER
     auth_type_code      VARCHAR(2),         -- Validates whether transaction is PB secured or not. '2' = PB secured, NULL = not PB secured
     nrid                VARCHAR(32),        -- Network reference ID (unique ID for each transaction)
     mti                 VARCHAR(4)          -- Message type identifier

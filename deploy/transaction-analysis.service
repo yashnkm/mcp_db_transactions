@@ -1,0 +1,26 @@
+[Unit]
+Description=Transaction Analysis — Streamlit app
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/mcp-app/mcp_db_transactions
+ExecStart=/home/ubuntu/mcp-app/mcp_db_transactions/venv/bin/streamlit run streamlit_app.py \
+    --server.address 0.0.0.0 \
+    --server.port 8501 \
+    --server.headless true \
+    --browser.gatherUsageStats false
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target

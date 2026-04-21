@@ -13,7 +13,7 @@ query -> retrieve_policy -> understand_query -> route -> execute_db -> compose_a
 - `retrieve_policy` — MMR search over Chroma-indexed policy docs.
 - `understand_query` — LLM call with structured output (`Intent`) using the schema-quirk prompt.
 - `route` — conditional edge based on `Intent.target_table`.
-- `execute_db` — `create_agent` with task-shaped tools (no generic `run_sql`).
+- `execute_db` — `create_agent` whose tools come from the **MCP server** (`mcp_server.py`) launched over stdio via `langchain-mcp-adapters`. No direct DB calls in the graph.
 - `compose_answer` — final LLM call combining policies + DB rows + raw flag interpretations.
 
 ## Modular model selection
@@ -75,6 +75,7 @@ python scripts/ui.py --share      # public link (tunneled)
 ## Layout
 
 ```
+mcp_server.py        # FastMCP server — exposes DB tools over stdio
 src/agent/
 ├── config.py        # pydantic-settings loader
 ├── models.py        # build_chat_model / build_embeddings factories
@@ -82,10 +83,28 @@ src/agent/
 ├── prompts.py       # schema-quirk + role prompts
 ├── db.py            # SQLAlchemy engine + fetch_all helper
 ├── ingest.py        # loaders -> splitter -> Chroma
-├── tools/db_tools.py  # @tool functions (task-shaped)
-├── nodes/           # retrieve, understand, route, execute, compose
+├── tools/db_tools.py  # plain Python DB functions (registered by mcp_server.py)
+├── nodes/           # retrieve, understand, route, execute (MCP client), compose
 └── graph.py         # StateGraph wiring + checkpointer selection
 ```
+
+### Using the MCP server from Claude Desktop / Code
+
+Any MCP-aware client can attach to this server. Example Claude Desktop
+config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "payments-db": {
+      "command": "/full/path/to/.venv/bin/python",
+      "args": ["/full/path/to/mcp_db_transactions/mcp_server.py"]
+    }
+  }
+}
+```
+
+The server reads `.env` from its working dir for `DATABASE_URL` etc.
 
 ## Notes
 

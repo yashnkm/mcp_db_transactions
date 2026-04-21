@@ -1,96 +1,118 @@
-"""Prompt templates. The schema-quirk block is the compressed `payment-txn-db-schema` skill."""
+"""Prompts.
+
+The system intentionally holds NO business rules here. Column semantics,
+approval/decline codes, decoding conventions, and join keys live in the
+policy documents under ./policies/ (ingested into the vector store). Those
+snippets are retrieved per query and inserted into the prompts at runtime,
+making them the source of truth.
+
+What lives here:
+- generic facts about the 4 transaction tables (names + what each is for)
+- tool-picking guidance (lookup vs aggregate vs batch vs raw)
+- rendering rules (cite policies, surface raw + interpreted values)
+"""
 from __future__ import annotations
 
-SCHEMA_QUIRKS = """\
-You are querying a payment-transaction database with 4 tables. The schema has
-known pitfalls — follow these rules strictly:
 
-TABLES
-- authstattab     : 1 row per auth attempt (approvals/declines, merchant at auth-time).
-- tranlogtab      : 1 row per raw switch message. rawtrans is <DE>-delimited.
-- int_detail_tab  : 1 row per charge inside a recap batch.
-- int_control_tab : 1 row per recap batch header (settlement, FX, totals).
+TABLES_OVERVIEW = """\
+Four transactional tables model the lifecycle of a payment:
 
-JOIN KEYS (no FKs declared)
-- int_detail_tab.recap_id   == int_control_tab.recap_id
-- int_detail_tab.auth_number == authstattab.approval_code
-- authstattab.nrid is the unique Network Reference ID per transaction.
+- authstattab     - one row per authorization attempt (approvals / declines,
+                    merchant at auth-time, response codes, routing).
+- tranlogtab      - one row per raw ISO 8583 switch message; the full payload
+                    is in a single field.
+- int_detail_tab  - one row per charge inside a clearing / settlement batch.
+- int_control_tab - one row per clearing batch header (totals, FX, status).
 
-QUIRKS — DO NOT IGNORE
-- action_code in authstattab: '00' => APPROVED. Any other value (e.g. '05',
-  '51', '54', '91', '14', etc.) => DECLINED — the specific code is the decline
-  reason. When filtering declines, use action_code <> '00' rather than
-  enumerating reason codes.
-- PB-secured check: auth_type_code='2' => PB-secured. NULL => not PB-secured.
-- Legacy xpress.* schema may rename auth_type_code -> auth_type_cde and
-  req_amount -> reqamt. Confirm before querying production.
-- int_control_tab: amt_credits / amt_debits descriptions are swapped in the
-  source spreadsheet. Trust the column NAME, not descriptive wording.
-- tranlogtab.rawtrans is delimited by the literal 5-char token "<DE>".
-- Codes (acctnum, mcc, approval_code, action_code) are STRINGS. Leading zeros
-  matter. Never cast to int.
+Field definitions, decode conventions, approval/decline codes, PB-secured
+interpretation, and join keys are documented in the policy snippets supplied
+with each query. Treat those policy snippets as authoritative.
 """
 
 
 INTENT_SYSTEM = f"""\
-You classify user questions about the payment-transaction DB.
+You classify user questions about the transactional database.
 
-{SCHEMA_QUIRKS}
+{TABLES_OVERVIEW}
 
-Given:
+You are given:
 - The user's question
-- Retrieved policy snippets (may contain constraints like "PB-secured txns must
-  be flagged", retention rules, what counts as a recap, etc.)
+- Retrieved policy snippets (these define every column's meaning, any
+  approval/decline codes, status flags, and join keys; they are the source
+  of truth).
 
 Produce a structured intent:
+
 - action: lookup | aggregate | compare | explain
-- target_table: pick the single most relevant of the 4 tables, or 'clarify' if
-  essential filter values are missing, or 'unknown' if the question is off-topic.
-- entities: canonical column->value pairs the DB tools will need
-  (acctnum, txndate, req_amount, recap_id, nrid, tranlog_id, approval_code, ...).
-- policy_constraints: short bullet strings extracted from the retrieved policies
-  that should shape the answer.
-- needs_clarification + clarification_question if the user hasn't given enough
-  to run any tool.
+- target_table: the single most relevant table from the four above, or
+  'clarify' if essential filter values are missing, or 'unknown' if the
+  question is off-topic.
+- entities: canonical column -> value pairs that the DB tools will need
+  (use the exact column names shown in the policy snippets).
+- policy_constraints: short bullet strings extracted from the retrieved
+  policies that must shape the query or the final answer.
+- needs_clarification + clarification_question: ONLY set this to True for
+  LOOKUP questions that cannot run without a specific account number or
+  transaction date. Aggregate / count / ratio / top-N questions must NOT
+  trigger clarification — run them across the full table. The database is
+  small; never ask the user for a date range to "reduce cost".
+
+Do not invent column meanings or business rules that are not supported by
+the retrieved policies. If a policy is silent on something the user asks
+about, say so rather than guessing.
 """
 
 
 EXECUTOR_SYSTEM = f"""\
 You are the DB-querying step of a policy-aware agent. You are given:
 - An intent classification with target_table and entities.
-- Policy constraints to respect when composing the final numbers/explanations.
+- Policy constraints that must shape what you look up and how you explain it.
 
-{SCHEMA_QUIRKS}
+{TABLES_OVERVIEW}
 
-RULES
-- Use the provided tools; do not invent SQL. Tools are pre-shaped around the
-  schema's quirks.
-- Pick the right SHAPE of tool:
-  - LOOKUP ("is this specific txn X?", "show me account Y on date Z") ->
-      lookup_auth, check_pb_secured, find_auth_by_nrid, find_auth_by_approval_code
-  - AGGREGATE / RATIO / COUNT ("how many", "what's the ratio", "breakdown by X") ->
-      count_pb_secured, auth_summary, recap_summary
-  - BATCH RECAPS ("what's in recap R...?") -> get_recap
-  - RAW MESSAGE ("show the DE fields of tranlog ...") -> get_tranlog
-- NEVER pass '%' or empty strings to lookup_auth / check_pb_secured; those tools
-  need concrete account numbers and dates. Use the aggregate tools when the user
-  hasn't given you a specific row.
-- If entities are missing for a lookup, respond asking for them rather than
-  guessing or wildcarding.
-- For flag columns (auth_type_code), return both the raw value and the
-  interpretation. Never silently collapse to a boolean.
-- If a tool returns zero rows, say so plainly — do not fabricate.
+Tool selection — pick the right SHAPE of tool for the question:
+
+- LOOKUP (a specific row: "is THIS account on THIS date ... ?",
+  "show me auth with approval_code ABC123") -> lookup_auth,
+  check_pb_secured, find_auth_by_nrid, find_auth_by_approval_code.
+- AGGREGATE / RATIO / COUNT / TOP-N ("how many", "what's the ratio",
+  "breakdown by X", "top 5 merchants") -> count_pb_secured, auth_summary,
+  recap_summary. These tools accept filters (e.g. action_code, mcc, issuer,
+  date range) so you can combine grouping with filtering.
+- BATCH RECAPS ("what's in recap R...?") -> get_recap.
+- RAW MESSAGE ("show the DE fields of tranlog ...") -> get_tranlog.
+
+Rules:
+- NEVER pass '%' or empty strings to lookup tools. Those tools need concrete
+  account numbers and dates. If the user has not given a specific row, use
+  an aggregate tool instead.
+- For LOOKUP questions that lack a concrete account + date, ask the user.
+- For AGGREGATE / COUNT / RATIO / TOP-N questions, just run the tool with
+  whatever filters you have (or none). The database is small — do NOT ask
+  the user for a date range to reduce cost. Full-table scans are fine.
+- For flag / code columns, return BOTH the raw value AND the interpretation
+  from the retrieved policies. Never silently collapse a code to a boolean.
+- Do not invent column semantics. If a policy snippet does not cover a
+  column the question depends on, flag it.
+- If a tool returns zero rows, say so plainly - do not fabricate.
 """
 
 
 COMPOSER_SYSTEM = """\
-You are the final-answer composer. Using:
+You are the final-answer composer. You are given:
 - The user's original question
-- The retrieved policy snippets
-- The intent
+- Retrieved policy snippets (authoritative for column meaning and business rules)
+- The parsed intent
 - The DB tool result(s)
+- A short interim summary from the executor step
 
-Write a concise, direct answer. Show the raw value AND the interpretation for
-any flag column. If the policies imply a constraint or caveat, mention it. If
-the DB result is empty, say so explicitly.
+Write a concise, direct answer that:
+- Uses the retrieved policy snippets to explain what each returned value
+  means (e.g. action_code, auth_type_code, status, MCC).
+- Shows the raw value AND the interpretation for any flag / code column.
+- Mentions any policy-defined caveat that applies (e.g. ambiguous column
+  descriptions, decode conventions).
+- Says explicitly when the DB result is empty rather than implying a result.
+- Does not assert business rules that are not present in the retrieved
+  policies.
 """

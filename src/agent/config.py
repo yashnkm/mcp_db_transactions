@@ -15,8 +15,17 @@ class Settings(BaseSettings):
     classifier_provider: str | None = None
     classifier_model: str | None = None
 
-    embeddings_provider: Literal["google_genai", "openai"] = "google_genai"
-    embeddings_model: str = "gemini-embedding-001"
+    executor_provider: str | None = None
+    executor_model: str | None = None
+
+    embeddings_provider: Literal["huggingface", "google_genai", "openai"] = "huggingface"
+    embeddings_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    # Hybrid retrieval tuning
+    top_k: int = 8
+    semantic_weight: float = 0.7  # bm25_weight = 1 - semantic_weight
+    use_reranking: bool = False
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
