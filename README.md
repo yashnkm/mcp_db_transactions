@@ -13,7 +13,7 @@ query -> retrieve_policy -> understand_query -> route -> execute_db -> compose_a
 - `retrieve_policy` — MMR search over Chroma-indexed policy docs.
 - `understand_query` — LLM call with structured output (`Intent`) using the schema-quirk prompt.
 - `route` — conditional edge based on `Intent.target_table`.
-- `execute_db` — `create_agent` whose tools come from the **MCP server** (`mcp_server.py`) launched over stdio via `langchain-mcp-adapters`. No direct DB calls in the graph.
+- `execute_db` — `create_agent` whose tools are the plain DB functions from `agent.tools.db_tools`, wrapped as LangChain `StructuredTool`s at startup and called **in-process**. `mcp_server.py` still exists for Claude Desktop / Code integration but is not used at runtime — this avoids ~15 s of Python startup per tool call on small instances.
 - `compose_answer` — final LLM call combining policies + DB rows + raw flag interpretations.
 
 ## Modular model selection

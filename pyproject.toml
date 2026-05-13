@@ -27,7 +27,9 @@ dependencies = [
     "gradio>=4.44.0",
     "streamlit>=1.40.0",
     "mcp>=1.2.0",
-    "langchain-mcp-adapters>=0.0.9",
+    # Note: langchain-mcp-adapters intentionally removed on this branch.
+    # The executor calls DB tools in-process; mcp_server.py still exists for
+    # Claude Desktop / Code integration but is not used at runtime.
 ]
 
 [project.optional-dependencies]

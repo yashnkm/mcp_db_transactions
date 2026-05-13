@@ -1,86 +1,65 @@
-"""Executor node — talks to the DB **via MCP**, not direct tool calls.
+"""Executor node — in-process LangChain tools, no MCP subprocess.
 
-Launches `mcp_server.py` as a stdio subprocess, loads its tools through
-`langchain-mcp-adapters`, and hands them to `create_agent()`. Nothing in this
-module touches Postgres directly — everything goes through MCP.
+The DB functions in `agent.tools.db_tools` are wrapped as LangChain tools
+and handed to `create_agent()` directly. Everything runs in the same Python
+process as Streamlit, so there is no subprocess spawn, no asyncio bridge,
+and no ~15 s Python-startup cost per tool call.
+
+`mcp_server.py` still exists at the repo root for Claude Desktop / Claude
+Code integration; it imports the same plain functions. The two surfaces
+share one implementation.
 """
 from __future__ import annotations
 
-import asyncio
 import json
-import sys
-from pathlib import Path
 
 from langchain.agents import create_agent
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_core.tools import StructuredTool
 
 from agent.logger import get_logger, timed
 from agent.models import build_executor_model
 from agent.prompts import EXECUTOR_SYSTEM
 from agent.state import AgentState
 from agent.text_utils import message_to_text
+from agent.tools.db_tools import ALL_DB_FUNCTIONS
+
 
 log = get_logger("execute")
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_MCP_SERVER = str(_REPO_ROOT / "mcp_server.py")
-
-
-_MCP_CLIENT: MultiServerMCPClient | None = None
-_MCP_TOOLS = None
+_TOOLS = None
 _EXECUTOR = None
 
 
-def _run_async(coro):
-    """Run an awaitable from sync code safely.
+def _build_tools() -> list:
+    """Wrap each plain Python function as a LangChain StructuredTool.
 
-    Streamlit reruns don't carry a running loop into the script thread, so
-    asyncio.run works. Fall back to a fresh loop if one is already attached
-    (e.g. running under pytest-asyncio).
+    `from_function` introspects type hints + docstring to build the JSON
+    schema the LLM uses to call it. Same surface as @tool, but lets the
+    functions stay decorator-free so `mcp_server.py` can also register
+    them with FastMCP.
     """
-    try:
-        return asyncio.run(coro)
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
+    return [StructuredTool.from_function(fn) for fn in ALL_DB_FUNCTIONS]
 
 
-def _mcp_tools():
-    """Load the MCP tools once per process."""
-    global _MCP_CLIENT, _MCP_TOOLS
-    if _MCP_TOOLS is not None:
-        return _MCP_TOOLS
-    log.info("spawning MCP server subprocess: %s %s", sys.executable, _MCP_SERVER)
-    _MCP_CLIENT = MultiServerMCPClient(
-        {
-            "payments_db": {
-                "command": sys.executable,
-                "args": [_MCP_SERVER],
-                "transport": "stdio",
-            }
-        }
-    )
-    with timed(log, "MCP client.get_tools()"):
-        _MCP_TOOLS = _run_async(_MCP_CLIENT.get_tools())
-    log.info(
-        "MCP tools loaded (%d): %s",
-        len(_MCP_TOOLS),
-        [t.name for t in _MCP_TOOLS],
-    )
-    return _MCP_TOOLS
+def _tools():
+    global _TOOLS
+    if _TOOLS is None:
+        _TOOLS = _build_tools()
+        log.info(
+            "in-process tools loaded (%d): %s",
+            len(_TOOLS), [t.name for t in _TOOLS],
+        )
+    return _TOOLS
 
 
 def _executor():
     global _EXECUTOR
     if _EXECUTOR is None:
-        log.info("building executor agent (create_agent) with MCP tools")
+        log.info("building executor agent (in-process tools, no MCP)")
         _EXECUTOR = create_agent(
             model=build_executor_model(),
-            tools=_mcp_tools(),
+            tools=_tools(),
             system_prompt=EXECUTOR_SYSTEM,
         )
     return _EXECUTOR
@@ -100,16 +79,14 @@ def execute_db(state: AgentState) -> dict:
         f"  target_table: {intent.target_table}\n"
         f"  entities: {json.dumps(intent.entities, default=str)}\n\n"
         f"Policy constraints:\n{policy_snippets}\n\n"
-        f"Call the appropriate MCP tool(s) and then summarize what you found. "
+        f"Call the appropriate tool(s) and then summarize what you found. "
         f"If entities are missing, say so instead of guessing."
     )
 
-    with timed(log, "inner create_agent loop (via ainvoke)"):
-        result = _run_async(
-            _executor().ainvoke(
-                {"messages": [{"role": "user", "content": brief}]},
-                config={"recursion_limit": 40},
-            )
+    with timed(log, "inner create_agent loop"):
+        result = _executor().invoke(
+            {"messages": [{"role": "user", "content": brief}]},
+            config={"recursion_limit": 40},
         )
     messages = result.get("messages", [])
 
